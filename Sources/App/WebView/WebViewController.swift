@@ -1290,6 +1290,8 @@ extension WebViewController: WebViewControllerProtocol {
 
     func load(request: URLRequest) {
         Current.Log.verbose("Requesting webView navigation to \(String(describing: request.url?.absoluteString))")
+        var request = request
+        server.info.connection.applyAdditionalHTTPHeaders(to: &request)
         webView.load(request)
     }
 

@@ -46,6 +46,14 @@ public struct ConnectionInfo: Codable, Equatable {
     }
 
     public var securityExceptions: SecurityExceptions = .init()
+    public var httpAdditionalHeaders: [String: String]? {
+        didSet {
+            let sanitized = ConnectionInfo.sanitizedAdditionalHeaders(httpAdditionalHeaders)
+            if sanitized != httpAdditionalHeaders {
+                httpAdditionalHeaders = sanitized
+            }
+        }
+    }
     public func evaluate(_ challenge: URLAuthenticationChallenge)
         -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         securityExceptions.evaluate(challenge)
@@ -62,7 +70,8 @@ public struct ConnectionInfo: Codable, Equatable {
         internalHardwareAddresses: [String]?,
         isLocalPushEnabled: Bool,
         securityExceptions: SecurityExceptions,
-        alwaysFallbackToInternalURL: Bool
+        alwaysFallbackToInternalURL: Bool,
+        httpAdditionalHeaders: [String: String]? = nil
     ) {
         self.externalURL = externalURL
         self.internalURL = internalURL
@@ -75,6 +84,7 @@ public struct ConnectionInfo: Codable, Equatable {
         self.isLocalPushEnabled = isLocalPushEnabled
         self.securityExceptions = securityExceptions
         self.alwaysFallbackToInternalURL = alwaysFallbackToInternalURL
+        self.httpAdditionalHeaders = ConnectionInfo.sanitizedAdditionalHeaders(httpAdditionalHeaders)
     }
 
     public init(from decoder: Decoder) throws {
@@ -98,6 +108,9 @@ public struct ConnectionInfo: Codable, Equatable {
             SecurityExceptions.self,
             forKey: .securityExceptions
         ) ?? .init()
+        self.httpAdditionalHeaders = ConnectionInfo.sanitizedAdditionalHeaders(
+            try container.decodeIfPresent([String: String].self, forKey: .httpAdditionalHeaders)
+        )
     }
 
     public enum URLType: Int, Codable, CaseIterable, CustomStringConvertible, CustomDebugStringConvertible {
@@ -334,6 +347,42 @@ public struct ConnectionInfo: Codable, Equatable {
     }
 }
 
+public extension ConnectionInfo {
+    private static func sanitizedAdditionalHeaders(
+        _ headers: [String: String]?
+    ) -> [String: String]? {
+        guard let headers else {
+            return nil
+        }
+
+        var sanitized: [String: String] = [:]
+
+        for (key, value) in headers {
+            let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !trimmedKey.isEmpty, !trimmedValue.isEmpty else {
+                continue
+            }
+
+            sanitized[trimmedKey] = trimmedValue
+        }
+
+        return sanitized.isEmpty ? nil : sanitized
+    }
+
+    var additionalHTTPHeadersForRequests: [String: String] {
+        httpAdditionalHeaders ?? [:]
+    }
+
+    func applyAdditionalHTTPHeaders(to request: inout URLRequest) {
+        for (field, value) in additionalHTTPHeadersForRequests where
+            request.value(forHTTPHeaderField: field) == nil {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
+    }
+}
+
 class ServerRequestAdapter: RequestAdapter {
     let server: Server
 
@@ -360,6 +409,8 @@ class ServerRequestAdapter: RequestAdapter {
                 completion(.failure(ServerConnectionError.noActiveURL(server.info.name)))
             }
         }
+
+        server.info.connection.applyAdditionalHTTPHeaders(to: &updatedRequest)
 
         completion(.success(updatedRequest))
     }
