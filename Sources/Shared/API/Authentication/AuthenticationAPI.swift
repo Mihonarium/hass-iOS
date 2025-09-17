@@ -26,7 +26,10 @@ public class AuthenticationAPI {
 
     init(server: Server) {
         self.server = server
-        self.session = Session(serverTrustManager: CustomServerTrustManager(server: server))
+        self.session = Session(
+            interceptor: .init(adapters: [ServerRequestAdapter(server: server)]),
+            serverTrustManager: CustomServerTrustManager(server: server)
+        )
     }
 
     public func refreshTokenWith(tokenInfo: TokenInfo) -> Promise<TokenInfo> {
@@ -38,7 +41,8 @@ public class AuthenticationAPI {
             let token = tokenInfo.refreshToken
             let routeInfo = RouteInfo(
                 route: AuthenticationRoute.refreshToken(token: token),
-                baseURL: activeUrl
+                baseURL: activeUrl,
+                additionalHeaders: server.info.connection.additionalHTTPHeadersForRequests
             )
             let request = session.request(routeInfo)
 
@@ -63,7 +67,8 @@ public class AuthenticationAPI {
             let token = tokenInfo.accessToken
             let routeInfo = RouteInfo(
                 route: AuthenticationRoute.revokeToken(token: token),
-                baseURL: activeUrl
+                baseURL: activeUrl,
+                additionalHeaders: server.info.connection.additionalHTTPHeadersForRequests
             )
             let request = session.request(routeInfo)
 
@@ -80,14 +85,16 @@ public class AuthenticationAPI {
     public static func fetchToken(
         authorizationCode: String,
         baseURL: URL,
-        exceptions: SecurityExceptions
+        exceptions: SecurityExceptions,
+        additionalHeaders: [String: String] = [:]
     ) -> Promise<TokenInfo> {
         let session = Session(serverTrustManager: CustomServerTrustManager(exceptions: exceptions))
 
         return Promise { seal in
             let routeInfo = RouteInfo(
                 route: AuthenticationRoute.token(authorizationCode: authorizationCode),
-                baseURL: baseURL
+                baseURL: baseURL,
+                additionalHeaders: additionalHeaders
             )
             let request = session.request(routeInfo)
 

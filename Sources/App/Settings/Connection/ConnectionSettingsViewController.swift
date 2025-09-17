@@ -19,6 +19,18 @@ class ConnectionSettingsViewController: HAFormViewController, RowControllerType 
         action: #selector(shareServer)
     )
 
+    private enum AdditionalHeadersRowTag: String {
+        case additionalHeaders
+    }
+
+    private enum AdditionalHeadersParsingError: LocalizedError {
+        case invalidFormat
+
+        var errorDescription: String? {
+            L10n.Settings.ConnectionSection.AdditionalHeaders.validationError
+        }
+    }
+
     init(server: Server) {
         self.server = server
 
@@ -37,6 +49,11 @@ class ConnectionSettingsViewController: HAFormViewController, RowControllerType 
         title = server.info.name
 
         tokens.append(server.observe { [weak self] info in
+            if let row = self?.form.rowBy(tag: AdditionalHeadersRowTag.additionalHeaders.rawValue) as? TextAreaRow {
+                row.value = Self.formattedAdditionalHeaders(for: info.connection.httpAdditionalHeaders)
+                row.updateCell()
+            }
+
             self?.form.allRows.forEach { $0.updateCell() }
             self?.title = info.name
         })
@@ -180,6 +197,36 @@ class ConnectionSettingsViewController: HAFormViewController, RowControllerType 
                 })
             }
 
+            +++ Section(
+                header: L10n.Settings.ConnectionSection.AdditionalHeaders.header,
+                footer: L10n.Settings.ConnectionSection.AdditionalHeaders.footer
+            )
+
+            <<< TextAreaRow(AdditionalHeadersRowTag.additionalHeaders.rawValue) { row in
+                row.placeholder = L10n.Settings.ConnectionSection.AdditionalHeaders.placeholder
+                row.value = Self.formattedAdditionalHeaders(for: server.info.connection.httpAdditionalHeaders)
+                row.textAreaHeight = .dynamic(initialTextViewHeight: 88)
+                row.add(rule: RuleClosure<String> { value in
+                    guard let value, value.contains(where: { !$0.isWhitespace && !$0.isNewline }) else {
+                        return nil
+                    }
+
+                    do {
+                        _ = try Self.parseAdditionalHeaders(from: value)
+                        return nil
+                    } catch {
+                        return ValidationError(msg: error.localizedDescription)
+                    }
+                })
+                row.validationOptions = .validatesOnChange
+            }.cellSetup { cell, _ in
+                cell.textView.autocapitalizationType = .none
+                cell.textView.autocorrectionType = .no
+                cell.textView.spellCheckingType = .no
+            }.onChange { [weak self, server] row in
+                self?.handleAdditionalHeadersChange(row: row, for: server)
+            }
+
             +++ Section(L10n.SettingsDetails.Privacy.title)
 
             <<< PushRow<ServerLocationPrivacy> {
@@ -292,6 +339,74 @@ class ConnectionSettingsViewController: HAFormViewController, RowControllerType 
         if !isMovingToParent {
             onDismissCallback?(self)
         }
+    }
+
+    private func handleAdditionalHeadersChange(row: TextAreaRow, for server: Server) {
+        _ = row.validate()
+
+        let trimmed = row.value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if trimmed.isEmpty {
+            server.update { info in
+                info.connection.httpAdditionalHeaders = nil
+            }
+            return
+        }
+
+        do {
+            let parsed = try Self.parseAdditionalHeaders(from: trimmed)
+            let sanitized = parsed.isEmpty ? nil : parsed
+
+            if sanitized == server.info.connection.httpAdditionalHeaders {
+                return
+            }
+
+            server.update { info in
+                info.connection.httpAdditionalHeaders = sanitized
+            }
+        } catch {
+            // validation handles displaying feedback; leave value unchanged
+        }
+    }
+
+    private static func formattedAdditionalHeaders(for headers: [String: String]?) -> String? {
+        guard let headers, !headers.isEmpty else {
+            return nil
+        }
+
+        return headers
+            .sorted { lhs, rhs in
+                lhs.key.localizedCaseInsensitiveCompare(rhs.key) == .orderedAscending
+            }
+            .map { "\($0.key): \($0.value)" }
+            .joined(separator: "\n")
+    }
+
+    private static func parseAdditionalHeaders(from text: String) throws -> [String: String] {
+        var headers: [String: String] = [:]
+
+        for rawLine in text.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !line.isEmpty else {
+                continue
+            }
+
+            guard let separator = line.firstIndex(of: ":") else {
+                throw AdditionalHeadersParsingError.invalidFormat
+            }
+
+            let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !name.isEmpty, !value.isEmpty else {
+                throw AdditionalHeadersParsingError.invalidFormat
+            }
+
+            headers[String(name)] = String(value)
+        }
+
+        return headers
     }
 
     private func addInvitationButtonToNavBar() {

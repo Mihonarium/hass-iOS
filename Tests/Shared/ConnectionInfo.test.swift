@@ -193,6 +193,38 @@ class ConnectionInfoTests: XCTestCase {
         XCTAssertEqual(info.activeAPIURL(), url?.appendingPathComponent("api"))
     }
 
+    func testApplyAdditionalHTTPHeaders() {
+        let url = URL(string: "http://example.com:8123")!
+        var info = ConnectionInfo(
+            externalURL: url,
+            internalURL: nil,
+            cloudhookURL: nil,
+            remoteUIURL: nil,
+            webhookID: "webhook_id1",
+            webhookSecret: nil,
+            internalSSIDs: nil,
+            internalHardwareAddresses: nil,
+            isLocalPushEnabled: false,
+            securityExceptions: .init(),
+            alwaysFallbackToInternalURL: false,
+            httpAdditionalHeaders: [
+                "CF-Access-Client-Id": "id",
+                "CF-Access-Client-Secret": "secret",
+            ]
+        )
+
+        var request = URLRequest(url: url)
+        info.applyAdditionalHTTPHeaders(to: &request)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "id")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "secret")
+
+        request.setValue("existing", forHTTPHeaderField: "CF-Access-Client-Id")
+        info.applyAdditionalHTTPHeaders(to: &request)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "CF-Access-Client-Id"), "existing")
+    }
+
     func testInternalExternalURL() {
         let internalURL = URL(string: "http://internal.example.com:8123")
         let externalURL = URL(string: "http://external.example.com:8123")

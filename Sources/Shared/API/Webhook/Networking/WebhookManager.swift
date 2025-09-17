@@ -551,6 +551,7 @@ public class WebhookManager: NSObject {
 
             var urlRequest = try URLRequest(url: webhookURL, method: .post)
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            server.info.connection.applyAdditionalHTTPHeaders(to: &urlRequest)
 
             let jsonObject = Mapper<WebhookRequest>(context: WebhookRequestContext.server(server)).toJSON(request)
             let data = try JSONSerialization.data(withJSONObject: jsonObject, options: [.sortedKeys])

@@ -2118,6 +2118,16 @@ public enum L10n {
         /// External URL
         public static var title: String { return L10n.tr("Localizable", "settings.connection_section.external_base_url.title") }
       }
+      public enum AdditionalHeaders {
+        /// Additional headers
+        public static var header: String { return L10n.tr("Localizable", "settings.connection_section.additional_headers.header") }
+        /// Provide HTTP headers to include with requests to this server. Enter one header per line using the format “Header: Value”.
+        public static var footer: String { return L10n.tr("Localizable", "settings.connection_section.additional_headers.footer") }
+        /// Header: Value
+        public static var placeholder: String { return L10n.tr("Localizable", "settings.connection_section.additional_headers.placeholder") }
+        /// Headers must be entered in the format “Header: Value”.
+        public static var validationError: String { return L10n.tr("Localizable", "settings.connection_section.additional_headers.validation_error") }
+      }
       public enum HomeAssistantCloud {
         /// Home Assistant Cloud
         public static var title: String { return L10n.tr("Localizable", "settings.connection_section.home_assistant_cloud.title") }
